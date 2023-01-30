@@ -1,5 +1,4 @@
 import sys
-import re
 from plotter import Plotter
 
 class Log:
@@ -15,12 +14,15 @@ class Log:
         self.height=0
         self.data=0
         self.time=0
+        self.segment_size=0
         self.throughput=0
         self.bitrate_level=0
         self.sample_rate=0
         self.bitrate=0
         self.buffer=0
         self.start_up_latency=0
+        self.current_buffer=0
+        self.buffer_threshold=0
         self.__extract_info(line)
         width=0
         height=0
@@ -31,6 +33,13 @@ class Log:
             self.__extract_info_dash(line)
         elif(self.type=="HTTP"):
             self.__extract_info_http(line)
+        elif(self.type=="BUFFER"):
+            self.__extract_info_buffer(line)
+
+    def __extract_info_buffer(self, line):
+        words=list(line.split())
+        self.current_buffer=int(words[2])
+        self.buffer_threshold=int(words[4])
 
     def __extract_info_http(self, line):
         words=list(line.split())
@@ -73,6 +82,7 @@ class Log:
         self.data=int(words[5])
         self.time=float(words[8])
         self.throughput=float(words[11])
+        self.segment_size=float(words[15])
         self.bitrate=float(words[19])
         self.bitrate_level=int(words[21][:len(words[21])-1])
         self.buffer=int(words[25])
@@ -93,11 +103,14 @@ class Log:
         ds.append(("Sample-Rate", self.sample_rate))
         ds.append(("Data", self.data))
         ds.append(("Time", self.time))
+        ds.append(("Segment size", self.segment_size))
         ds.append(("Throughput", self.throughput))
         ds.append(("Bitrate-level", self.bitrate_level))
         ds.append(("Bitrate", self.bitrate))
         ds.append(("Buffer", self.buffer))
         ds.append(("Start Up Latency", self.start_up_latency))
+        ds.append(("Current buffer ", self.current_buffer))
+        ds.append(("Buffer threshold ", self.buffer_threshold))
         return " "+str(ds)
 
 
@@ -107,28 +120,36 @@ class Logs:
     Class Logs holds a set of DASH audio and video logs and its statistics
     """
     def __init__(self):
-        self.config={"AUDIO_LOGGING":True, "VIDEO_LOGGING":True, "HTTP_LOGGING":True}
+        self.config={"AUDIO_LOGGING":True, "VIDEO_LOGGING":True, "HTTP_LOGGING":True, "BUFFER_LOGGING": True}
         self.audio_logs=[]
         self.video_logs=[]
         self.http_logs=[]
-        self.audio_info={'bitrate_switches': 0,
+        self.buffer_logs=[]
+        self.audio_info={
+                            'bitrate_switches': 0,
                             'average_bitrate': 0,
                             'average_throughput': 0,
                             'average_buffer': 0 
                         }
-        self.video_info={'bitrate_switches': 0,
+        self.video_info={
+                            'playback_time': 0,
+                            'bitrate_switches': 0,
                             'average_bitrate': 0,
                             'average_throughput': 0,
                             'average_buffer': 0 
                         }
         self.total_throughput=0
         self.total_buffer=0
+        self.buffer_info={
+                            'number_of_interruptions': 0,
+                            'time_under_interruptions': 0
+                         }
 
     def configure(self, key, value):
         if(key in self.config.keys()):
             self.config[key]=value
         else:
-            print("Trying to set an unknown configuration")
+            print("Trying to set an unknown configuration!!")
 
     def parse_logs(self, file_lines):
         lines=[]
@@ -148,6 +169,9 @@ class Logs:
             elif(len(words)>4 and words[0]==b'[HTTP]' and words[4]==b'downloaded' and self.config["HTTP_LOGGING"]):
                 log=Log(line, "HTTP")
                 self.http_logs.append(log)
+            elif(len(words)>2 and words[0]==b'[VideoOut]' and words[1]==b'buffer' and self.config["BUFFER_LOGGING"]):
+                log=Log(line, "BUFFER")
+                self.buffer_logs.append(log)
         # Get stats from logs if AUDIO_LOG
         if(self.config["AUDIO_LOGGING"]):
             counter=0
@@ -170,6 +194,7 @@ class Logs:
                     self.video_info['bitrate_switches']+=1
                 else:
                     counter+=1
+                    self.video_info['playback_time']+=log.segment_size*1000
                     self.video_info['average_bitrate']+=log.bitrate
                     self.video_info['average_throughput']+=log.throughput
                     self.video_info['average_buffer']+=log.buffer
@@ -178,6 +203,21 @@ class Logs:
             self.video_info['average_buffer']/=counter
         self.total_throughput=self.audio_info['average_throughput']+self.video_info['average_throughput']
         self.total_buffer=self.audio_info['average_buffer']+self.video_info['average_buffer']
+        # Get stats from logs if BUFFER_LOGGING
+        if(self.config['BUFFER_LOGGING']):
+            num_of_time_buffer_low=0
+            num_of_time_buffer_high=0
+            flag=0
+            for log in self.buffer_logs:
+                if(log.current_buffer<log.buffer_threshold):
+                    num_of_time_buffer_low+=1
+                    if(flag==0):
+                        self.buffer_info['number_of_interruptions']+=1
+                        flag=1
+                else:
+                    num_of_time_buffer_high+=1
+                    flag=0
+            self.buffer_info['time_under_interruptions']=(num_of_time_buffer_low/num_of_time_buffer_high)*self.video_info['playback_time']
 
     def print_info(self):
         if(self.config["AUDIO_LOGGING"]):
@@ -191,6 +231,7 @@ class Logs:
         if(self.config["VIDEO_LOGGING"]):
             print("Video Stream Information - ")
             print("----------------------------")
+            print("Total Playback time: ", self.video_info['playback_time']/1000, "s")
             print("Num of Bitrate switches: ", self.video_info['bitrate_switches'])
             print("Average Bitrate: ", self.video_info['average_bitrate'], "kbps")
             print("Average Throughput: ", self.video_info['average_throughput'], "kbps")
@@ -205,6 +246,9 @@ class Logs:
             print("Start Up Latency 1: ", self.http_logs[0].start_up_latency, "ms")
             if(self.config["AUDIO_LOGGING"] and self.config["VIDEO_LOGGING"]):
                 print("Start Up Latency 2: ", self.http_logs[1].start_up_latency, "ms")
+        if(self.config["BUFFER_LOGGING"]):
+            print("Number of Interruptions: ", self.buffer_info['number_of_interruptions'])
+            print("Time under Interruptions: ", self.buffer_info['time_under_interruptions']/1000, "s")
 
     def generate_plots(self, type="video"):
         plotter=Plotter()

@@ -1,0 +1,317 @@
+import sys
+import re
+from plotter import Plotter
+
+class Log:
+    """
+    Class Log which holds all information related to a single log
+    """
+    def __init__(self, line, type="DASH"):
+        self.type=type
+        self.video=0
+        self.audio=0
+        self.bitrate_switch=0
+        self.width=0
+        self.height=0
+        self.data=0
+        self.time=0
+        self.throughput=0
+        self.bitrate_level=0
+        self.sample_rate=0
+        self.bitrate=0
+        self.buffer=0
+        self.start_up_latency=0
+        self.__extract_info(line)
+        width=0
+        height=0
+        sample_rate=0
+
+    def __extract_info(self, line):
+        if(self.type=="DASH"):
+            self.__extract_info_dash(line)
+        elif(self.type=="HTTP"):
+            self.__extract_info_http(line)
+
+    def __extract_info_http(self, line):
+        words=list(line.split())
+        self.start_up_latency=float(words[10][1:])/1000
+
+    def __extract_info_dash(self, line):
+        words=list(line.split())
+        for i in range(0, len(words)):
+            if(words[i]==b'AS#1'):
+                # Assuming AS1 is Adaptation set of videos
+                self.video=1
+            elif(words[i]==b'AS#2'):
+                # Assuming AS2 is Adaptation set for audio
+                self.audio=1
+            elif(words[i]==b'changed' and words[i+1]==b'quality'):
+                self.bitrate_switch=1
+                self.__set_bitrate_switch(line)
+                break
+            elif(words[i]==b'got'):
+                self.__set_current_status(line)
+                break
+
+    def __set_bitrate_switch(self, line):
+        words=list(line.split())
+        if(self.video):
+            # Setting Video bitrate switching parameters
+            self.bitrate_level=int(words[6])
+            self.width=int(words[10])
+            self.height=int(words[12])
+            Log.width=self.width
+            Log.height=self.height
+        elif(self.audio):
+            # Setting Audio bitrate switching parameters
+            self.bitrate_level=int(words[6])
+            self.sample_rate=int(words[11])
+            Log.sample_rate=self.sample_rate
+
+    def __set_current_status(self, line):
+        words=list(line.split())
+        self.data=int(words[5])
+        self.time=float(words[8])
+        self.throughput=float(words[11])
+        self.bitrate=float(words[19])
+        self.bitrate_level=int(words[21][:len(words[21])-1])
+        self.buffer=int(words[25])
+        if(self.video):
+            self.width=Log.width
+            self.height=Log.height
+        elif(self.audio):
+            self.sample_rate=Log.sample_rate
+
+    def __str__(self):
+        ds=[]
+        ds.append(("Type", self.type))
+        ds.append(("Audio", self.audio))
+        ds.append(("Video", self.video))
+        ds.append(("Bitrate-switch", self.bitrate_switch))
+        ds.append(("Width", self.width))
+        ds.append(("Height", self.height))
+        ds.append(("Sample-Rate", self.sample_rate))
+        ds.append(("Data", self.data))
+        ds.append(("Time", self.time))
+        ds.append(("Throughput", self.throughput))
+        ds.append(("Bitrate-level", self.bitrate_level))
+        ds.append(("Bitrate", self.bitrate))
+        ds.append(("Buffer", self.buffer))
+        ds.append(("Start Up Latency", self.start_up_latency))
+        return " "+str(ds)
+
+
+
+class Logs:
+    """
+    Class Logs holds a set of DASH audio and video logs and its statistics
+    """
+    def __init__(self):
+        self.config={"AUDIO_LOGGING":True, "VIDEO_LOGGING":True, "HTTP_LOGGING":True}
+        self.audio_logs=[]
+        self.video_logs=[]
+        self.http_logs=[]
+        self.audio_info={'bitrate_switches': 0,
+                            'average_bitrate': 0,
+                            'average_throughput': 0,
+                            'average_buffer': 0 
+                        }
+        self.video_info={'bitrate_switches': 0,
+                            'average_bitrate': 0,
+                            'average_throughput': 0,
+                            'average_buffer': 0 
+                        }
+        self.total_throughput=0
+        self.total_buffer=0
+
+    def configure(self, key, value):
+        if(key in self.config.keys()):
+            self.config[key]=value
+        else:
+            print("Trying to set an unknown configuration")
+
+    def parse_logs(self, file_lines):
+        lines=[]
+        for f_line in file_lines:
+            lines.extend(f_line.splitlines())
+        # Create the logs and put them in respective lists
+        for line in lines:
+            words=list(line.split())
+            # For processing DASH logs
+            if(len(words)>1 and words[0]==b'[DASH]' and (words[1]==b'AS#1' or words[1]==b'AS#2') and (words[4]!=b'done')):
+                log=Log(line, "DASH")
+                if(log.audio and self.config["AUDIO_LOGGING"]):
+                    self.audio_logs.append(log)
+                if(log.video and self.config["VIDEO_LOGGING"]):
+                    self.video_logs.append(log)
+            # For processing HTTP logs
+            elif(len(words)>4 and words[0]==b'[HTTP]' and words[4]==b'downloaded' and self.config["HTTP_LOGGING"]):
+                log=Log(line, "HTTP")
+                self.http_logs.append(log)
+        # Get stats from logs if AUDIO_LOG
+        if(self.config["AUDIO_LOGGING"]):
+            counter=0
+            for log in self.audio_logs:
+                if(log.bitrate_switch):
+                    self.audio_info['bitrate_switches']+=1
+                else:
+                    counter+=1
+                    self.audio_info['average_bitrate']+=log.bitrate
+                    self.audio_info['average_throughput']+=log.throughput
+                    self.audio_info['average_buffer']+=log.buffer
+            self.audio_info['average_bitrate']/=counter
+            self.audio_info['average_throughput']/=counter
+            self.audio_info['average_buffer']/=counter
+        # Get stats from logs if VIDEO_LOG
+        if(self.config["VIDEO_LOGGING"]):
+            counter=0
+            for log in self.video_logs:
+                if(log.bitrate_switch):
+                    self.video_info['bitrate_switches']+=1
+                else:
+                    counter+=1
+                    self.video_info['average_bitrate']+=log.bitrate
+                    self.video_info['average_throughput']+=log.throughput
+                    self.video_info['average_buffer']+=log.buffer
+            self.video_info['average_bitrate']/=counter
+            self.video_info['average_throughput']/=counter
+            self.video_info['average_buffer']/=counter
+        self.total_throughput=self.audio_info['average_throughput']+self.video_info['average_throughput']
+        self.total_buffer=self.audio_info['average_buffer']+self.video_info['average_buffer']
+
+    def print_info(self):
+        if(self.config["AUDIO_LOGGING"]):
+            print("Audio Stream Information - ")
+            print("----------------------------")
+            print("Num of Bitrate switches: ", self.audio_info['bitrate_switches'])
+            print("Average Bitrate: ", self.audio_info['average_bitrate'], "kbps")
+            print("Average Throughput: ", self.audio_info['average_throughput'], "kbps")
+            print("Average Buffer: ", self.audio_info['average_buffer'], "ms")
+            print()
+        if(self.config["VIDEO_LOGGING"]):
+            print("Video Stream Information - ")
+            print("----------------------------")
+            print("Num of Bitrate switches: ", self.video_info['bitrate_switches'])
+            print("Average Bitrate: ", self.video_info['average_bitrate'], "kbps")
+            print("Average Throughput: ", self.video_info['average_throughput'], "kbps")
+            print("Average Buffer: ", self.video_info['average_buffer'], "ms")
+            print()
+        if(self.config["AUDIO_LOGGING"] and self.config["VIDEO_LOGGING"]):
+            print("Overall - ")
+            print("----------------------------")
+            print("Total throughput: ", self.total_throughput, "kbps")
+            print("Total buffer: ", self.total_buffer, "ms")
+        if(self.config["HTTP_LOGGING"]):
+            print("Start Up Latency 1: ", self.http_logs[0].start_up_latency, "ms")
+            if(self.config["AUDIO_LOGGING"] and self.config["VIDEO_LOGGING"]):
+                print("Start Up Latency 2: ", self.http_logs[1].start_up_latency, "ms")
+
+    def generate_plots(self, type="video"):
+        plotter=Plotter()
+        if(self.config["AUDIO_LOGGING"]):
+            self.__plot_audio_stats(plotter)
+        if(self.config["VIDEO_LOGGING"]):
+            self.__plot_video_stats(plotter)
+
+    def __plot_video_stats(self, plotter):
+        x_bitrate_level=[]
+        y_bitrate_level=[]
+        x_bitrate=[]
+        y_bitrate=[]
+        x_throughput=[]
+        y_throughput=[]
+        x_buffer=[]
+        y_buffer=[]
+        counter=0
+        for log in self.video_logs:
+            if(not log.bitrate_switch):
+                x_bitrate_level.append(counter)
+                x_bitrate.append(counter)
+                x_throughput.append(counter)
+                x_buffer.append(counter)
+                y_bitrate_level.append(log.bitrate_level)
+                y_bitrate.append(log.bitrate)
+                y_throughput.append(log.throughput)
+                y_buffer.append(log.buffer)
+                counter+=1
+        plotter.plot_graph(x_bitrate_level, y_bitrate_level, title="Video Bitrate Level",
+                            xlabel="Chunck Number",
+                            ylabel="Bitrate Level (kbps)",
+                            output_filename="video_bitrate_level.eps"
+                        )
+        plotter.plot_graph(x_bitrate, y_bitrate, title="Video Bitrate",
+                            xlabel="Chunck Number",
+                            ylabel="Bitrate (kbps)",
+                            output_filename="video_bitrate.eps"
+                        )
+        plotter.plot_graph(x_throughput, y_throughput, title="Video Throughput",
+                            xlabel="Chunck Number",
+                            ylabel="Throughput (kbps)",
+                            output_filename="video_throughput.eps"
+                        )
+        plotter.plot_graph(x_buffer, y_buffer, title="Video Buffer",
+                            xlabel="Chunck Number",
+                            ylabel="Buffer (ms)",
+                            output_filename="video_buffer.eps"
+                        )
+
+    def __plot_audio_stats(self, plotter):
+        x_bitrate_level=[]
+        y_bitrate_level=[]
+        x_bitrate=[]
+        y_bitrate=[]
+        x_throughput=[]
+        y_throughput=[]
+        x_buffer=[]
+        y_buffer=[]
+        counter=1
+        for log in self.audio_logs:
+            if(not log.bitrate_switch):
+                x_bitrate_level.append(counter)
+                x_bitrate.append(counter)
+                x_throughput.append(counter)
+                x_buffer.append(counter)
+                y_bitrate_level.append(log.bitrate_level)
+                y_bitrate.append(log.bitrate)
+                y_throughput.append(log.throughput)
+                y_buffer.append(log.buffer)
+                counter+=1
+        plotter.plot_graph(x_bitrate_level, y_bitrate_level, title="Audio Bitrate Level",
+                            xlabel="Chunck Number",
+                            ylabel="Bitrate Level (kbps)",
+                            output_filename="audio_bitrate_level.eps"
+                        )
+        plotter.plot_graph(x_bitrate, y_bitrate, title="Audio Bitrate",
+                            xlabel="Chunck Number",
+                            ylabel="Bitrate (kbps)",
+                            output_filename="audio_bitrate.eps"
+                        )
+        plotter.plot_graph(x_throughput, y_throughput, title="Audio Throughput",
+                            xlabel="Chunck Number",
+                            ylabel="Throughput (kbps)",
+                            output_filename="audio_throughput.eps"
+                        )
+        plotter.plot_graph(x_buffer, y_buffer, title="Audio Buffer",
+                            xlabel="Chunck Number",
+                            ylabel="Buffer (ms)",
+                            output_filename="audio_buffer.eps"
+                        )
+
+
+
+if __name__=="__main__":
+    file_name=""
+    try:
+        if(len(sys.argv)>2):
+            file_name=sys.argv[1]
+    except:
+        print("Error!: input log ffile not provided")
+        exit
+    with open(sys.argv[1], "rb") as f:
+        logs=Logs()
+        logs.configure("VIDEO_LOGGING", True)
+        logs.configure("AUDIO_LOGGING", False)
+        logs.configure("HTTP_LOGGING", True)
+        logs.parse_logs(f.readlines())
+        logs.print_info()
+        logs.generate_plots()

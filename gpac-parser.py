@@ -151,7 +151,7 @@ class Logs:
         else:
             print("Trying to set an unknown configuration!!")
 
-    def parse_logs(self, file_lines):
+    def parse_logs(self, file_lines, scriptRunnerlog):
         lines=[]
         for f_line in file_lines:
             lines.extend(f_line.splitlines())
@@ -217,7 +217,13 @@ class Logs:
                 else:
                     num_of_time_buffer_high+=1
                     flag=0
-            self.buffer_info['time_under_interruptions']=(num_of_time_buffer_low/num_of_time_buffer_high)*self.video_info['playback_time']
+            total_duration=0
+            s_f=open(scriptRunnerlog, "r")
+            s_f_lines=s_f.readlines()
+            for line in s_f_lines:
+                if(line.find("gpac")!=-1):
+                    total_duration=float(line.split("@time@")[1].strip())
+            self.buffer_info['time_under_interruptions']=(total_duration*1000-self.video_info['playback_time'])
 
     def print_info(self):
         if(self.config["AUDIO_LOGGING"]):
@@ -356,6 +362,7 @@ if __name__=="__main__":
         logs.configure("VIDEO_LOGGING", True)
         logs.configure("AUDIO_LOGGING", False)
         logs.configure("HTTP_LOGGING", True)
-        logs.parse_logs(f.readlines())
+        logs.configure("BUFFER_LOGGING", True)
+        logs.parse_logs(f.readlines(), sys.argv[2])
         logs.print_info()
         logs.generate_plots()

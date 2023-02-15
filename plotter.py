@@ -7,8 +7,8 @@ class Plotter:
     def __init__(self):
         self.plot_type="lp"
         self.line_width=2
-        self.line_color=3
-        self.point_type=4
+        self.line_color=6
+        self.point_type=6
 
     def set_plot_type(self, type):
         self.plot_type=type

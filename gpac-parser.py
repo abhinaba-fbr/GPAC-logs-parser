@@ -129,14 +129,16 @@ class Logs:
                             'bitrate_switches': 0,
                             'average_bitrate': 0,
                             'average_throughput': 0,
-                            'average_buffer': 0 
+                            'average_buffer': 0,
+                            'average_rtt': 0
                         }
         self.video_info={
                             'playback_time': 0,
                             'bitrate_switches': 0,
                             'average_bitrate': 0,
                             'average_throughput': 0,
-                            'average_buffer': 0 
+                            'average_buffer': 0,
+                            'average_rtt': 0 
                         }
         self.total_throughput=0
         self.total_buffer=0
@@ -183,9 +185,11 @@ class Logs:
                     self.audio_info['average_bitrate']+=log.bitrate
                     self.audio_info['average_throughput']+=log.throughput
                     self.audio_info['average_buffer']+=log.buffer
+                    self.audio_info['average_rtt']+=log.time
             self.audio_info['average_bitrate']/=counter
             self.audio_info['average_throughput']/=counter
             self.audio_info['average_buffer']/=counter
+            self.audio_info['average_rtt']/=counter
         # Get stats from logs if VIDEO_LOG
         if(self.config["VIDEO_LOGGING"]):
             counter=0
@@ -198,9 +202,11 @@ class Logs:
                     self.video_info['average_bitrate']+=log.bitrate
                     self.video_info['average_throughput']+=log.throughput
                     self.video_info['average_buffer']+=log.buffer
+                    self.video_info['average_rtt']+=log.time
             self.video_info['average_bitrate']/=counter
             self.video_info['average_throughput']/=counter
             self.video_info['average_buffer']/=counter
+            self.video_info['average_rtt']/=counter
         self.total_throughput=self.audio_info['average_throughput']+self.video_info['average_throughput']
         self.total_buffer=self.audio_info['average_buffer']+self.video_info['average_buffer']
         # Get stats from logs if BUFFER_LOGGING
@@ -233,6 +239,7 @@ class Logs:
             print("Average Bitrate: ", self.audio_info['average_bitrate'], "kbps")
             print("Average Throughput: ", self.audio_info['average_throughput'], "kbps")
             print("Average Buffer: ", self.audio_info['average_buffer'], "ms")
+            print("Average RTT: ", self.audio_info['average_rtt'], "s")
             print()
         if(self.config["VIDEO_LOGGING"]):
             print("Video Stream Information - ")
@@ -242,6 +249,7 @@ class Logs:
             print("Average Bitrate: ", self.video_info['average_bitrate'], "kbps")
             print("Average Throughput: ", self.video_info['average_throughput'], "kbps")
             print("Average Buffer: ", self.video_info['average_buffer'], "ms")
+            print("Average RTT: ", self.video_info['average_rtt'], "s")
             print()
         if(self.config["AUDIO_LOGGING"] and self.config["VIDEO_LOGGING"]):
             print("Overall - ")
@@ -272,6 +280,8 @@ class Logs:
         y_throughput=[]
         x_buffer=[]
         y_buffer=[]
+        x_rtt=[]
+        y_rtt=[]
         counter=0
         for log in self.video_logs:
             if(not log.bitrate_switch):
@@ -279,10 +289,12 @@ class Logs:
                 x_bitrate.append(counter)
                 x_throughput.append(counter)
                 x_buffer.append(counter)
+                x_rtt.append(counter)
                 y_bitrate_level.append(log.bitrate_level)
                 y_bitrate.append(log.bitrate)
                 y_throughput.append(log.throughput)
                 y_buffer.append(log.buffer)
+                y_rtt.append(log.time)
                 counter+=1
         plotter.plot_graph(x_bitrate_level, y_bitrate_level, title="Video Bitrate Level",
                             xlabel="Chunck Number",
@@ -304,6 +316,11 @@ class Logs:
                             ylabel="Buffer (ms)",
                             output_filename="video_buffer.eps"
                         )
+        plotter.plot_graph(x_rtt, y_rtt, title="Video RTT",
+                            xlabel="Chunk Number",
+                            ylabel="RTT (s)",
+                            output_filename="video_rtt.eps"
+                        )
 
     def __plot_audio_stats(self, plotter):
         x_bitrate_level=[]
@@ -314,6 +331,8 @@ class Logs:
         y_throughput=[]
         x_buffer=[]
         y_buffer=[]
+        x_rtt=[]
+        y_rtt=[]
         counter=1
         for log in self.audio_logs:
             if(not log.bitrate_switch):
@@ -321,10 +340,12 @@ class Logs:
                 x_bitrate.append(counter)
                 x_throughput.append(counter)
                 x_buffer.append(counter)
+                x_rtt.append(counter)
                 y_bitrate_level.append(log.bitrate_level)
                 y_bitrate.append(log.bitrate)
                 y_throughput.append(log.throughput)
                 y_buffer.append(log.buffer)
+                y_rtt.append(log.time)
                 counter+=1
         plotter.plot_graph(x_bitrate_level, y_bitrate_level, title="Audio Bitrate Level",
                             xlabel="Chunck Number",
@@ -346,7 +367,11 @@ class Logs:
                             ylabel="Buffer (ms)",
                             output_filename="audio_buffer.eps"
                         )
-
+        plotter.plot_graph(x_rtt, y_rtt, title="Audio RTT",
+                            xlabel="Chunk Number",
+                            ylabel="RTT (s)",
+                            output_filename="audio_rtt.eps"
+                        )
 
 
 if __name__=="__main__":

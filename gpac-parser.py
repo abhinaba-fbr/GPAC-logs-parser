@@ -1,4 +1,5 @@
 import sys
+import math
 from plotter import Plotter
 
 class Log:
@@ -130,7 +131,9 @@ class Logs:
                             'average_bitrate': 0,
                             'average_throughput': 0,
                             'average_buffer': 0,
-                            'average_rtt': 0
+                            'average_rtt': 0,
+                            'jitter': 0,
+                            'throughput_sd' : 0
                         }
         self.video_info={
                             'playback_time': 0,
@@ -138,7 +141,9 @@ class Logs:
                             'average_bitrate': 0,
                             'average_throughput': 0,
                             'average_buffer': 0,
-                            'average_rtt': 0 
+                            'average_rtt': 0,
+                            'jitter': 0,
+                            'throughput_sd': 0
                         }
         self.total_throughput=0
         self.total_buffer=0
@@ -177,6 +182,7 @@ class Logs:
         # Get stats from logs if AUDIO_LOG
         if(self.config["AUDIO_LOGGING"]):
             counter=0
+            prev_time=-1
             for log in self.audio_logs:
                 if(log.bitrate_switch):
                     self.audio_info['bitrate_switches']+=1
@@ -186,13 +192,22 @@ class Logs:
                     self.audio_info['average_throughput']+=log.throughput
                     self.audio_info['average_buffer']+=log.buffer
                     self.audio_info['average_rtt']+=log.time
+                    if(prev_time!=-1):
+                        self.audio_info['jitter']+=abs(log.time-prev_time)
+                    prev_time=log.time
             self.audio_info['average_bitrate']/=counter
             self.audio_info['average_throughput']/=counter
             self.audio_info['average_buffer']/=counter
             self.audio_info['average_rtt']/=counter
+            self.audio_info['jitter']/=(counter-1)
+            for log in self.audio_logs:
+                self.audio_info['throughput_sd']+=(log.throughput-self.audio_log['average_throughput'])**2
+            self.audio_info['throughput_sd']/=counter
+            self.audio_info['throughput_sd']=math.sqrt(self.audio_info['throughput_sd'])
         # Get stats from logs if VIDEO_LOG
         if(self.config["VIDEO_LOGGING"]):
             counter=0
+            prev_time=-1
             for log in self.video_logs:
                 if(log.bitrate_switch):
                     self.video_info['bitrate_switches']+=1
@@ -203,10 +218,18 @@ class Logs:
                     self.video_info['average_throughput']+=log.throughput
                     self.video_info['average_buffer']+=log.buffer
                     self.video_info['average_rtt']+=log.time
+                    if(prev_time!=-1):
+                        self.video_info['jitter']+=abs(log.time-prev_time)
+                    prev_time=log.time
             self.video_info['average_bitrate']/=counter
             self.video_info['average_throughput']/=counter
             self.video_info['average_buffer']/=counter
             self.video_info['average_rtt']/=counter
+            self.video_info['jitter']/=(counter-1)
+            for log in self.video_logs:
+                self.video_info['throughput_sd']+=(log.throughput-self.video_info['average_throughput'])**2
+            self.video_info['throughput_sd']/=counter
+            self.video_info['throughput_sd']=math.sqrt(self.video_info['throughput_sd'])
         self.total_throughput=self.audio_info['average_throughput']+self.video_info['average_throughput']
         self.total_buffer=self.audio_info['average_buffer']+self.video_info['average_buffer']
         # Get stats from logs if BUFFER_LOGGING
@@ -240,6 +263,8 @@ class Logs:
             print("Average Throughput: ", self.audio_info['average_throughput'], "kbps")
             print("Average Buffer: ", self.audio_info['average_buffer'], "ms")
             print("Average RTT: ", self.audio_info['average_rtt'], "s")
+            print("Throughput SD: ", self.audio_info['throughput_sd'])
+            print("Jitter: ", self.audio_info['jitter']*1000, "ms")
             print()
         if(self.config["VIDEO_LOGGING"]):
             print("Video Stream Information - ")
@@ -250,6 +275,8 @@ class Logs:
             print("Average Throughput: ", self.video_info['average_throughput'], "kbps")
             print("Average Buffer: ", self.video_info['average_buffer'], "ms")
             print("Average RTT: ", self.video_info['average_rtt'], "s")
+            print("Throughput SD: ", self.video_info['throughput_sd'])
+            print("Jitter: ", self.video_info['jitter']*1000, "ms")
             print()
         if(self.config["AUDIO_LOGGING"] and self.config["VIDEO_LOGGING"]):
             print("Overall - ")

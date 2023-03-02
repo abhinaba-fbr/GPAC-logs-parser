@@ -133,7 +133,8 @@ class Logs:
                             'average_buffer': 0,
                             'average_rtt': 0,
                             'jitter': 0,
-                            'throughput_sd' : 0
+                            'throughput_sd' : 0,
+                            'throughput_deviation': 0
                         }
         self.video_info={
                             'playback_time': 0,
@@ -143,7 +144,8 @@ class Logs:
                             'average_buffer': 0,
                             'average_rtt': 0,
                             'jitter': 0,
-                            'throughput_sd': 0
+                            'throughput_sd': 0,
+                            'throughput_deviation': 0
                         }
         self.total_throughput=0
         self.total_buffer=0
@@ -183,6 +185,7 @@ class Logs:
         if(self.config["AUDIO_LOGGING"]):
             counter=0
             prev_time=-1
+            prev_throughput=-1
             for log in self.audio_logs:
                 if(log.bitrate_switch):
                     self.audio_info['bitrate_switches']+=1
@@ -192,14 +195,17 @@ class Logs:
                     self.audio_info['average_throughput']+=log.throughput
                     self.audio_info['average_buffer']+=log.buffer
                     self.audio_info['average_rtt']+=log.time
-                    if(prev_time!=-1):
+                    if(prev_time!=-1 and prev_throughput!=-1):
                         self.audio_info['jitter']+=abs(log.time-prev_time)
+                        self.audio_info['throughput_deviation']+=abs(log.throughput-prev_throughput)
                     prev_time=log.time
+                    prev_throughput=log.throughput
             self.audio_info['average_bitrate']/=counter
             self.audio_info['average_throughput']/=counter
             self.audio_info['average_buffer']/=counter
             self.audio_info['average_rtt']/=counter
             self.audio_info['jitter']/=(counter-1)
+            self.audio_info['throughput_deviation']/=(counter-1)
             for log in self.audio_logs:
                 self.audio_info['throughput_sd']+=(log.throughput-self.audio_log['average_throughput'])**2
             self.audio_info['throughput_sd']/=counter
@@ -208,6 +214,7 @@ class Logs:
         if(self.config["VIDEO_LOGGING"]):
             counter=0
             prev_time=-1
+            prev_throughput=-1
             for log in self.video_logs:
                 if(log.bitrate_switch):
                     self.video_info['bitrate_switches']+=1
@@ -218,14 +225,17 @@ class Logs:
                     self.video_info['average_throughput']+=log.throughput
                     self.video_info['average_buffer']+=log.buffer
                     self.video_info['average_rtt']+=log.time
-                    if(prev_time!=-1):
+                    if(prev_time!=-1 and prev_throughput!=-1):
                         self.video_info['jitter']+=abs(log.time-prev_time)
+                        self.video_info['throughput_deviation']+=abs(log.throughput-prev_throughput)
                     prev_time=log.time
+                    prev_throughput=log.throughput
             self.video_info['average_bitrate']/=counter
             self.video_info['average_throughput']/=counter
             self.video_info['average_buffer']/=counter
             self.video_info['average_rtt']/=counter
             self.video_info['jitter']/=(counter-1)
+            self.video_info['throughput_deviation']/=(counter-1)
             for log in self.video_logs:
                 self.video_info['throughput_sd']+=(log.throughput-self.video_info['average_throughput'])**2
             self.video_info['throughput_sd']/=counter
@@ -264,6 +274,7 @@ class Logs:
             print("Average Buffer: ", self.audio_info['average_buffer'], "ms")
             print("Average RTT: ", self.audio_info['average_rtt'], "s")
             print("Throughput SD: ", self.audio_info['throughput_sd'])
+            print("Throughput Deviation: ", self.audio_info['throughput_deviation'])
             print("Jitter: ", self.audio_info['jitter']*1000, "ms")
             print()
         if(self.config["VIDEO_LOGGING"]):
@@ -276,6 +287,7 @@ class Logs:
             print("Average Buffer: ", self.video_info['average_buffer'], "ms")
             print("Average RTT: ", self.video_info['average_rtt'], "s")
             print("Throughput SD: ", self.video_info['throughput_sd'])
+            print("Throughput Deviation: ", self.video_info['throughput_deviation'])
             print("Jitter: ", self.video_info['jitter']*1000, "ms")
             print()
         if(self.config["AUDIO_LOGGING"] and self.config["VIDEO_LOGGING"]):
@@ -293,6 +305,7 @@ class Logs:
 
     def generate_plots(self, type="video"):
         plotter=Plotter()
+        plotter.set_point_type(0)
         if(self.config["AUDIO_LOGGING"]):
             self.__plot_audio_stats(plotter)
         if(self.config["VIDEO_LOGGING"]):
@@ -323,31 +336,31 @@ class Logs:
                 y_buffer.append(log.buffer)
                 y_rtt.append(log.time)
                 counter+=1
-        plotter.plot_graph(x_bitrate_level, y_bitrate_level, title="Video Bitrate Level",
-                            xlabel="Chunck Number",
-                            ylabel="Bitrate Level (kbps)",
-                            output_filename="video_bitrate_level.eps"
-                        )
-        plotter.plot_graph(x_bitrate, y_bitrate, title="Video Bitrate",
-                            xlabel="Chunck Number",
-                            ylabel="Bitrate (kbps)",
-                            output_filename="video_bitrate.eps"
-                        )
+        # plotter.plot_graph(x_bitrate_level, y_bitrate_level, title="Video Bitrate Level",
+        #                     xlabel="Chunck Number",
+        #                     ylabel="Bitrate Level (kbps)",
+        #                     output_filename="video_bitrate_level.eps"
+        #                 )
+        # plotter.plot_graph(x_bitrate, y_bitrate, title="Video Bitrate",
+        #                     xlabel="Chunck Number",
+        #                     ylabel="Bitrate (kbps)",
+        #                     output_filename="video_bitrate.eps"
+        #                 )
         plotter.plot_graph(x_throughput, y_throughput, title="Video Throughput",
                             xlabel="Chunck Number",
                             ylabel="Throughput (kbps)",
                             output_filename="video_throughput.eps"
                         )
-        plotter.plot_graph(x_buffer, y_buffer, title="Video Buffer",
-                            xlabel="Chunck Number",
-                            ylabel="Buffer (ms)",
-                            output_filename="video_buffer.eps"
-                        )
-        plotter.plot_graph(x_rtt, y_rtt, title="Video RTT",
-                            xlabel="Chunk Number",
-                            ylabel="RTT (s)",
-                            output_filename="video_rtt.eps"
-                        )
+        # plotter.plot_graph(x_buffer, y_buffer, title="Video Buffer",
+        #                     xlabel="Chunck Number",
+        #                     ylabel="Buffer (ms)",
+        #                     output_filename="video_buffer.eps"
+        #                 )
+        # plotter.plot_graph(x_rtt, y_rtt, title="Video RTT",
+        #                     xlabel="Chunk Number",
+        #                     ylabel="RTT (s)",
+        #                     output_filename="video_rtt.eps"
+        #                 )
 
     def __plot_audio_stats(self, plotter):
         x_bitrate_level=[]

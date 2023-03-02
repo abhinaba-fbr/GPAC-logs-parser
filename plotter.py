@@ -38,7 +38,7 @@ class Plotter:
             return
         self.generate_dat_file(xarray, yarray)
         (xmin, xmax)=self.get_range(xarray)
-        (ymin, ymax)=self.get_range(yarray)
+        (ymin, ymax)=(0, 13000)#self.get_range(yarray)
         plot_file_content=""
         plot_file_content+="set term postscript eps color blacktext 'Arial'\n"
         plot_file_content+="set output '"+output_directory+"/"+output_filename+"'\n"
